@@ -22,6 +22,7 @@
 
 package com.morgoo.droidplugin.hook.handle;
 
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.Application;
 import android.app.Instrumentation;
@@ -83,8 +84,6 @@ public class PluginInstrumentation extends Instrumentation {
             } catch (RemoteException e) {
                 Log.e(TAG, "callActivityOnCreate:onActivityCreated", e);
             }
-
-
         }
 
 
@@ -106,7 +105,9 @@ public class PluginInstrumentation extends Instrumentation {
                     RunningActivities.onActivtyCreate(activity, targetInfo, stubInfo);
                     activity.setRequestedOrientation(targetInfo.screenOrientation);
                     PluginManager.getInstance().onActivityCreated(stubInfo, targetInfo);
-                    fixTaskDescription(activity, targetInfo);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        fixTaskDescription(activity, targetInfo);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -131,20 +132,25 @@ public class PluginInstrumentation extends Instrumentation {
         }
     }
 
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void fixTaskDescription(Activity activity, ActivityInfo targetInfo) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            PackageManager pm = mHostContext.getPackageManager();
-            String lablel = String.valueOf(targetInfo.loadLabel(pm));
-            Drawable icon = targetInfo.loadIcon(pm);
-            Bitmap bitmap = null;
-            if (icon instanceof BitmapDrawable) {
-                bitmap = ((BitmapDrawable) icon).getBitmap();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                PackageManager pm = mHostContext.getPackageManager();
+                String lablel = String.valueOf(targetInfo.loadLabel(pm));
+                Drawable icon = targetInfo.loadIcon(pm);
+                Bitmap bitmap = null;
+                if (icon instanceof BitmapDrawable) {
+                    bitmap = ((BitmapDrawable) icon).getBitmap();
+                }
+                if (bitmap != null) {
+                    activity.setTaskDescription(new android.app.ActivityManager.TaskDescription(lablel, bitmap));
+                } else {
+                    activity.setTaskDescription(new android.app.ActivityManager.TaskDescription(lablel));
+                }
             }
-            if (bitmap != null) {
-                activity.setTaskDescription(new android.app.ActivityManager.TaskDescription(lablel, bitmap));
-            } else {
-                activity.setTaskDescription(new android.app.ActivityManager.TaskDescription(lablel));
-            }
+        } catch (Throwable e) {
+            Log.w(TAG, "fixTaskDescription fail", e);
         }
     }
 
@@ -212,10 +218,17 @@ public class PluginInstrumentation extends Instrumentation {
 
     @Override
     public void callActivityOnNewIntent(Activity activity, Intent intent) {
-        if (activity != null && intent != null) {
-            intent.setClassName(activity.getPackageName(), activity.getClass().getName());
+//        if (activity != null && intent != null) {
+//            intent.setClassName(activity.getPackageName(), activity.getClass().getName());
+//        }
+        try {
+            Intent newIntent = intent.getParcelableExtra(Env.EXTRA_TARGET_INTENT);
+            if (newIntent != null) {
+                intent = newIntent;
+            }
+        } catch (Throwable e) {
+            Log.e(TAG, "callActivityOnNewIntent:read EXTRA_TARGET_INTENT", e);
         }
-
         if (enable) {
             try {
                 onActivityOnNewIntent(activity, intent);
